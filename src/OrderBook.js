@@ -1,32 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import io from 'socket.io-client';
 
 const OrderBook = () => {
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [], bidSum: '0', askSum: '0' });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
 
   useEffect(() => {
-    const fetchOrderBook = async () => {
-      try {
-        const response = await fetch('http://localhost:3000/orderbook');
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        const data = await response.json();
-        setOrderBook(data);
-        setLoading(false);
-      } catch (err) {
-        setError('Failed to fetch order book data');
-        setLoading(false);
-      }
+    const socket = io('http://localhost:3000', {
+      transports: ['websocket'],
+      upgrade: false,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      console.log('Connected to server');
+      setConnectionStatus('connected');
+    });
+
+    socket.on('orderBookUpdate', (data) => {
+      setOrderBook(data);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('Connection error:', err);
+      setConnectionStatus('error');
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Disconnected:', reason);
+      setConnectionStatus('disconnected');
+    });
+
+    return () => {
+      socket.disconnect();
     };
-
-    fetchOrderBook();
-    // Fetch data every 30 seconds
-    const interval = setInterval(fetchOrderBook, 30000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const chartData = [
@@ -34,12 +43,12 @@ const OrderBook = () => {
     ...orderBook.asks.map(order => ({ price: parseFloat(order.price), bidSize: 0, askSize: parseFloat(order.size) }))
   ].sort((a, b) => a.price - b.price);
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>{error}</div>;
-
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center' }}>Order Book</h1>
+      <h1 style={{ textAlign: 'center' }}>Order Book (Real-time)</h1>
+      <div style={{ textAlign: 'center', marginBottom: '20px', color: connectionStatus === 'connected' ? 'green' : 'red' }}>
+        Status: {connectionStatus}
+      </div>
       
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div style={{ width: '48%' }}>
