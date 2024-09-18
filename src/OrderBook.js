@@ -1,12 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import io from 'socket.io-client';
+import { throttle } from 'lodash';
+import OrderTable from './OrderTable';  // Assuming you've created this optimized component
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+const UPDATE_INTERVAL = 1000; // 1 seconds
 
 const OrderBook = () => {
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [], bidSum: '0', askSum: '0' });
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+
+  const throttledSetOrderBook = useCallback(
+    throttle((data) => {
+      setOrderBook(prevOrderBook => {
+        // Only update if data has changed
+        if (JSON.stringify(prevOrderBook) !== JSON.stringify(data)) {
+          return data;
+        }
+        return prevOrderBook;
+      });
+    }, UPDATE_INTERVAL, { leading: false, trailing: true }),
+    []
+  );
 
   useEffect(() => {
     const socket = io(BACKEND_URL, {
@@ -22,7 +38,7 @@ const OrderBook = () => {
     });
 
     socket.on('orderBookUpdate', (data) => {
-      setOrderBook(data);
+      throttledSetOrderBook(data);
     });
 
     socket.on('connect_error', (err) => {
@@ -38,12 +54,12 @@ const OrderBook = () => {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [throttledSetOrderBook]);
 
-  const chartData = [
+  const chartData = useMemo(() => [
     ...orderBook.bids.map(order => ({ price: parseFloat(order.price), bidSize: parseFloat(order.size), askSize: 0 })),
     ...orderBook.asks.map(order => ({ price: parseFloat(order.price), bidSize: 0, askSize: parseFloat(order.size) }))
-  ].sort((a, b) => a.price - b.price);
+  ].sort((a, b) => a.price - b.price), [orderBook]);
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
@@ -55,47 +71,13 @@ const OrderBook = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div style={{ width: '48%' }}>
           <h2>Bids</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Price</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Size</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orderBook.bids.map((order, index) => (
-                <tr key={`bid-${index}`}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px', color: 'green' }}>{order.price}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{order.size}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{(parseFloat(order.price) * parseFloat(order.size)).toFixed(8)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <OrderTable orders={orderBook.bids} type="bid" />
           <p>Bid Sum (size * price): {orderBook.bidSum}</p>
         </div>
         
         <div style={{ width: '48%' }}>
           <h2>Asks</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Price</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Size</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px', backgroundColor: '#f2f2f2' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orderBook.asks.map((order, index) => (
-                <tr key={`ask-${index}`}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px', color: 'red' }}>{order.price}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{order.size}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{(parseFloat(order.price) * parseFloat(order.size)).toFixed(8)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <OrderTable orders={orderBook.asks} type="ask" />
           <p>Ask Sum (size): {orderBook.askSum}</p>
         </div>
       </div>
