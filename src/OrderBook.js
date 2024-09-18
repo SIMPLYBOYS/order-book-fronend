@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import io from 'socket.io-client';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+
 const OrderBook = () => {
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [], bidSum: '0', askSum: '0' });
   const [connectionStatus, setConnectionStatus] = useState('connecting');
 
   useEffect(() => {
-    const socket = io('http://localhost:3000', {
+    const socket = io(BACKEND_URL, {
       transports: ['websocket'],
       upgrade: false,
       reconnectionAttempts: Infinity,
